@@ -41,18 +41,35 @@ pub fn getCursor() !Position {
     }
 }
 
-pub fn setCursor(position: Position) !void {
+pub fn setCursor(position: Position) !void { //todo: check for valid position?
     if (builtin.os.tag == .windows) {
         var info = try getConsoleScreenBufferInfo();
-        //info.dwCursorPosition.X = @intCast(position.x + @as(u16, @intCast(info.srWindow.Left)));
-        //info.dwCursorPosition.Y = @intCast(position.y + @as(u16, @intCast(info.srWindow.Top)));
         info.dwCursorPosition.X = @as(i16, @intCast(position.x)) + info.srWindow.Left;
         info.dwCursorPosition.Y = @as(i16, @intCast(position.y)) + info.srWindow.Top;
-        _ = try std.io.getStdOut().writer().print(">>{any}\n", .{info.srWindow});
-        _ = try std.io.getStdOut().writer().print(">>{any}\n", .{info.dwCursorPosition});
         if (std.os.windows.kernel32.SetConsoleCursorPosition(std.io.getStdOut().handle, info.dwCursorPosition) != std.os.windows.TRUE) {
             return error.Unexpected;
         }
+    }
+}
+
+const CONSOLE_CURSOR_INFO = extern struct {
+    dwSize: std.os.windows.DWORD,
+    bVisible: std.os.windows.BOOL,
+};
+
+extern "kernel32" fn GetConsoleCursorInfo(hConsoleOutput: std.os.windows.HANDLE, lpConsoleCursorInfo: *CONSOLE_CURSOR_INFO) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
+extern "kernel32" fn SetConsoleCursorInfo(hConsoleOutput: std.os.windows.HANDLE, lpConsoleCursorInfo: *CONSOLE_CURSOR_INFO) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
+
+pub fn setCursorVisible(visible: bool) !void {
+    if (builtin.os.tag == .windows) {
+        var info: CONSOLE_CURSOR_INFO = undefined;
+        if (GetConsoleCursorInfo(std.io.getStdOut().handle, &info) == std.os.windows.TRUE) {
+            info.bVisible = if (visible) std.os.windows.TRUE else std.os.windows.FALSE;
+            if (SetConsoleCursorInfo(std.io.getStdOut().handle, &info) == std.os.windows.TRUE) {
+                return;
+            }
+        }
+        return error.Unexpected;
     }
 }
 
