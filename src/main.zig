@@ -7,6 +7,7 @@ pub fn main() !void {
 
     _ = try std.io.getStdOut().write("HELLO\n");
     _ = try std.io.getStdOut().write("HELLO2\n");
+    _ = Termio.getTerminalSize();
     _ = try std.io.getStdIn().reader().readByte();
 }
 
