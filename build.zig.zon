@@ -1,6 +1,7 @@
 .{
-    .name = "zigTermio",
+    .name = .zigTermio,
     .version = "0.1.0",
+    .fingerprint = 0x2cf7ba812984ccbe,
 
     .dependencies = .{},
 
