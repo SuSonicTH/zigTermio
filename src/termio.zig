@@ -5,6 +5,16 @@ pub const Position = struct {
 
 pub const Size = Position;
 
+var oldCodePage: windows.UINT = 0;
+
+var stdoutHandle: windows.HANDLE = undefined;
+var originalOutMode: windows.DWORD = undefined;
+var out: std.fs.File = undefined;
+
+var stdinHandle: windows.HANDLE = undefined;
+var originalInMode: windows.DWORD = undefined;
+var in: std.fs.File = undefined;
+
 var alternateBuffer: bool = false;
 
 pub fn init() !void {
@@ -24,8 +34,6 @@ pub fn init() !void {
 
         out = std.io.getStdOut();
         in = std.io.getStdIn();
-
-        _ = try out.write(SET_CURSOR_HOME);
     }
 }
 
@@ -49,7 +57,7 @@ pub fn enterAlternateBuffer() !void {
 }
 
 pub fn exitAlternateBuffer() !void {
-    if (!alternateBuffer) {
+    if (alternateBuffer) {
         _ = try out.write(EXIT_ALTERNATE_BUFFER);
         alternateBuffer = false;
     }
@@ -86,6 +94,7 @@ pub fn getTerminalSize() !Size {
     const oldPos = try getCursor();
     _ = try out.write(CSI ++ "9999;9999H");
     const pos = try getCursor();
+
     try setCursor(oldPos);
     return pos;
 }
@@ -94,6 +103,32 @@ pub fn getKey() !u8 {
     var key: [1]u8 = undefined;
     _ = try in.read(&key);
     return key[0];
+}
+
+pub fn drawBox(topLeft: Position, bottomRight: Position) !void {
+    const oldPos = try getCursor();
+
+    try setCursor(topLeft);
+    _ = try out.write("┌");
+    for (topLeft.x + 1..bottomRight.x) |_| {
+        _ = try out.write("─");
+    }
+    _ = try out.write("┐");
+
+    try setCursor(.{ .x = topLeft.x, .y = bottomRight.y });
+    _ = try out.write("└");
+    for (topLeft.x + 1..bottomRight.x) |_| {
+        _ = try out.write("─");
+    }
+    _ = try out.write("┘");
+
+    for (topLeft.y + 1..bottomRight.y) |y| {
+        try setCursor(.{ .x = topLeft.x, .y = @intCast(y) });
+        _ = try out.write("│");
+        try setCursor(.{ .x = bottomRight.x, .y = @intCast(y) });
+        _ = try out.write("│");
+    }
+    try setCursor(oldPos);
 }
 
 /////////////////////////
@@ -142,19 +177,10 @@ extern "kernel32" fn GetConsoleOutputCP() callconv(windows.WINAPI) windows.UINT;
 extern "kernel32" fn SetConsoleOutputCP(codepage: windows.UINT) callconv(windows.WINAPI) windows.BOOL;
 
 const utf8CodePage: windows.UINT = 65001;
-var oldCodePage: windows.UINT = 0;
-
-var stdoutHandle: windows.HANDLE = undefined;
-var originalOutMode: windows.DWORD = undefined;
-var out: std.fs.File = undefined;
 
 const ENABLE_VIRTUAL_TERMINAL_PROCESSING: windows.DWORD = 0x4;
 const ENABLE_PROCESSED_OUTPUT: windows.DWORD = 0x0001;
 const OUTPUT_MODE = ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_PROCESSED_OUTPUT;
-
-var stdinHandle: windows.HANDLE = undefined;
-var originalInMode: windows.DWORD = undefined;
-var in: std.fs.File = undefined;
 
 const ENABLE_VIRTUAL_TERMINAL_INPUT: windows.DWORD = 0x200;
 const ENABLE_WINDOW_INPUT: windows.DWORD = 0x0008;

@@ -7,13 +7,9 @@ pub fn main() !void {
     try Termio.enterAlternateBuffer();
     const writer = std.io.getStdOut().writer();
 
-    _ = try writer.write("HELLO\n");
-    _ = try writer.write("HELLO2\n");
     const size = try Termio.getTerminalSize();
+    try Termio.drawBox(.{ .x = 1, .y = 1 }, size);
+    try Termio.setCursor(.{ .x = 2, .y = 2 });
     _ = try writer.print("size = {d}x{d}", .{ size.x, size.y });
-    _ = try Termio.getKey();
-
-    try Termio.clearScreen(true);
-    _ = try writer.print("screen cleard", .{});
     _ = try Termio.getKey();
 }
