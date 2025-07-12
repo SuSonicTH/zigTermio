@@ -1,3 +1,136 @@
+pub const Position = struct {
+    x: u16,
+    y: u16,
+};
+
+pub const Size = Position;
+
+var alternateBuffer: bool = false;
+
+pub fn init() !void {
+    if (builtin.os.tag == .windows) {
+        oldCodePage = GetConsoleOutputCP();
+        if (oldCodePage != utf8CodePage) {
+            _ = SetConsoleOutputCP(utf8CodePage);
+        }
+
+        stdoutHandle = windows.kernel32.GetStdHandle(windows.STD_OUTPUT_HANDLE) orelse return error.NoStandardHandleAttached;
+        if (GetConsoleMode(stdoutHandle, &originalOutMode) == windows.FALSE) return error.Unexpected;
+        if (SetConsoleMode(stdoutHandle, OUTPUT_MODE) == windows.FALSE) return error.Unexpected;
+
+        stdinHandle = windows.kernel32.GetStdHandle(windows.STD_INPUT_HANDLE) orelse return error.NoStandardHandleAttached;
+        if (GetConsoleMode(stdinHandle, &originalInMode) == windows.FALSE) return error.Unexpected;
+        if (SetConsoleMode(stdinHandle, INPUT_MODE) == windows.FALSE) return error.Unexpected;
+
+        out = std.io.getStdOut();
+        in = std.io.getStdIn();
+
+        _ = try out.write(SET_CURSOR_HOME);
+    }
+}
+
+pub fn deinit() void {
+    if (builtin.os.tag == .windows) {
+        exitAlternateBuffer() catch {};
+        _ = SetConsoleMode(stdoutHandle, originalOutMode);
+        _ = SetConsoleMode(stdinHandle, originalInMode);
+
+        if (oldCodePage > 0 and oldCodePage != utf8CodePage) {
+            _ = SetConsoleOutputCP(oldCodePage);
+        }
+    }
+}
+
+pub fn enterAlternateBuffer() !void {
+    if (!alternateBuffer) {
+        _ = try out.write(ENTER_ALTERNATE_BUFFER);
+        alternateBuffer = true;
+    }
+}
+
+pub fn exitAlternateBuffer() !void {
+    if (!alternateBuffer) {
+        _ = try out.write(EXIT_ALTERNATE_BUFFER);
+        alternateBuffer = false;
+    }
+}
+
+pub fn getCursor() !Position {
+    _ = try out.write(CSI ++ "6n");
+    const pos = readTill('[', 'R');
+    if (instring(pos, ';')) |sep| {
+        return .{
+            .y = try std.fmt.parseInt(u16, pos[0..sep], 10),
+            .x = try std.fmt.parseInt(u16, pos[sep + 1 ..], 10),
+        };
+    }
+    return error.CouldNotParsePosition;
+}
+
+pub fn setCursor(pos: Position) !void {
+    var buffer: [14]u8 = undefined;
+    const output = try std.fmt.bufPrint(&buffer, CSI ++ "{d};{d}H", .{ pos.y, pos.x });
+    _ = try out.write(output);
+}
+
+pub fn setCursorHome() !void {
+    _ = try out.write(SET_CURSOR_HOME);
+}
+
+pub fn clearScreen(home: bool) !void {
+    _ = try out.write(CLEAR_SCREEN);
+    if (home) try setCursorHome();
+}
+
+pub fn getTerminalSize() !Size {
+    const oldPos = try getCursor();
+    _ = try out.write(CSI ++ "9999;9999H");
+    const pos = try getCursor();
+    try setCursor(oldPos);
+    return pos;
+}
+
+pub fn getKey() !u8 {
+    var key: [1]u8 = undefined;
+    _ = try in.read(&key);
+    return key[0];
+}
+
+/////////////////////////
+/// private functions
+/////////////////////////
+
+fn instring(string: []const u8, char: u8) ?usize {
+    for (0..string.len) |i| {
+        if (string[i] == char) {
+            return i;
+        }
+    }
+    return null;
+}
+
+var readTillBuffer: [128]u8 = undefined;
+fn readTill(comptime start: u8, comptime end: u8) []const u8 {
+    var pos: u8 = 0;
+    while ((in.reader().readByte() catch {
+        return readTillBuffer[0..pos];
+    }) != start) {}
+    while (pos < readTillBuffer.len) {
+        readTillBuffer[pos] = in.reader().readByte() catch {
+            return readTillBuffer[0..pos];
+        };
+        if (readTillBuffer[pos] == end) {
+            return readTillBuffer[0..pos];
+        }
+        pos += 1;
+    }
+    return readTillBuffer[1..pos];
+}
+
+/////////////////////////////
+/// Imports and Constants
+/////////////////////////////
+
 const std = @import("std");
 const builtin = @import("builtin");
 const windows = std.os.windows;
@@ -36,162 +169,3 @@ const ENTER_ALTERNATE_BUFFER: []const u8 = CSI ++ "?1049h";
 const EXIT_ALTERNATE_BUFFER: []const u8 = CSI ++ "?1049l";
 const CLEAR_SCREEN = CSI ++ "2J";
 const SET_CURSOR_HOME = CSI ++ "1;1H";
-
-pub fn init() !void {
-    if (builtin.os.tag == .windows) {
-        oldCodePage = GetConsoleOutputCP();
-        if (oldCodePage != utf8CodePage) {
-            _ = SetConsoleOutputCP(utf8CodePage);
-        }
-
-        stdoutHandle = windows.kernel32.GetStdHandle(windows.STD_OUTPUT_HANDLE) orelse return error.NoStandardHandleAttached;
-        if (GetConsoleMode(stdoutHandle, &originalOutMode) == windows.FALSE) return error.Unexpected;
-        if (SetConsoleMode(stdoutHandle, OUTPUT_MODE) == windows.FALSE) return error.Unexpected;
-
-        stdinHandle = windows.kernel32.GetStdHandle(windows.STD_INPUT_HANDLE) orelse return error.NoStandardHandleAttached;
-        if (GetConsoleMode(stdinHandle, &originalInMode) == windows.FALSE) return error.Unexpected;
-        if (SetConsoleMode(stdinHandle, INPUT_MODE) == windows.FALSE) return error.Unexpected;
-
-        out = std.io.getStdOut();
-        in = std.io.getStdIn();
-        write(ENTER_ALTERNATE_BUFFER);
-        write(SET_CURSOR_HOME);
-    }
-}
-
-inline fn write(command: []const u8) void {
-    _ = out.write(command) catch {};
-}
-
-pub fn deinit() void {
-    if (builtin.os.tag == .windows) {
-        //write(EXIT_ALTERNATE_BUFFER);
-        _ = SetConsoleMode(stdoutHandle, originalOutMode);
-        _ = SetConsoleMode(stdinHandle, originalInMode);
-
-        if (oldCodePage > 0 and oldCodePage != utf8CodePage) {
-            _ = SetConsoleOutputCP(oldCodePage);
-        }
-    }
-}
-
-pub const Position = struct {
-    x: u16,
-    y: u16,
-};
-
-var readTillBuffer: [128]u8 = undefined;
-pub fn readTill(comptime start: u8, comptime end: u8) []const u8 {
-    var pos: u8 = 0;
-    while ((in.reader().readByte() catch {
-        return readTillBuffer[0..pos];
-    }) != start) {}
-    while (pos < readTillBuffer.len) {
-        readTillBuffer[pos] = in.reader().readByte() catch {
-            return readTillBuffer[0..pos];
-        };
-        if (readTillBuffer[pos] == end) {
-            return readTillBuffer[0..pos];
-        }
-        pos += 1;
-    }
-    return readTillBuffer[1..pos];
-}
-
-pub fn getTerminalSize() Position {
-    write(CSI ++ "9999;9999H");
-    write(CSI ++ "6n");
-    const size = readTill('[', 'R');
-    write("\n");
-    write(SET_CURSOR_HOME);
-    for (size, 0..) |c, i| {
-        out.writer().print("{d}:{d}:{c}\n", .{ i, c, c }) catch {};
-    }
-    out.writer().print("got:'{s}'\n", .{size}) catch {};
-    write(size);
-    return .{
-        .x = 0,
-        .y = 0,
-    };
-}
-
-//pub const TerminalSize = struct {
-//    width: u16,
-//    height: u16,
-//};
-//
-//pub fn getTerminalSize() !TerminalSize {
-//    if (builtin.os.tag == .windows) {
-//        const info = try getConsoleScreenBufferInfo();
-//        return .{
-//            .width = @intCast(info.srWindow.Right - info.srWindow.Left + 1),
-//            .height = @intCast(info.srWindow.Bottom - info.srWindow.Top + 1),
-//        };
-//    } else {
-//        var buffer: std.posix.system.winsize = undefined;
-//        if (std.posix.errno(std.posix.system.ioctl(std.io.getStdOut().handle, std.posix.T.IOCGWINSZ, @intFromPtr(&buffer))) == .SUCCESS) {
-//            return .{
-//                .width = buffer.ws_col,
-//                .height = buffer.ws_row,
-//            };
-//        } else {
-//            return error.Unexpected;
-//        }
-//    }
-//}
-//
-//pub const Position = struct {
-//    x: u16 = 0,
-//    y: u16 = 0,
-//};
-//
-//pub fn getCursor() !Position {
-//    if (builtin.os.tag == .windows) {
-//        const info = try getConsoleScreenBufferInfo();
-//        return .{
-//            .x = @intCast(info.dwCursorPosition.X - info.srWindow.Left),
-//            .y = @intCast(info.dwCursorPosition.Y - info.srWindow.Top),
-//        };
-//    }
-//}
-//
-//pub fn setCursor(position: Position) !void { //todo: check for valid position?
-//    if (builtin.os.tag == .windows) {
-//        var info = try getConsoleScreenBufferInfo();
-//        info.dwCursorPosition.X = @as(i16, @intCast(position.x)) + info.srWindow.Left;
-//        info.dwCursorPosition.Y = @as(i16, @intCast(position.y)) + info.srWindow.Top;
-//        if (std.os.windows.kernel32.SetConsoleCursorPosition(std.io.getStdOut().handle, info.dwCursorPosition) != std.os.windows.TRUE) {
-//            return error.Unexpected;
-//        }
-//    }
-//}
-//
-//const CONSOLE_CURSOR_INFO = extern struct {
-//    dwSize: std.os.windows.DWORD,
-//    bVisible: std.os.windows.BOOL,
-//};
-//
-//extern "kernel32" fn GetConsoleCursorInfo(hConsoleOutput: std.os.windows.HANDLE, lpConsoleCursorInfo: *CONSOLE_CURSOR_INFO) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
-//extern "kernel32" fn SetConsoleCursorInfo(hConsoleOutput: std.os.windows.HANDLE, lpConsoleCursorInfo: *CONSOLE_CURSOR_INFO) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
-//
-//pub fn setCursorVisible(visible: bool) !void {
-//    if (builtin.os.tag == .windows) {
-//        var info: CONSOLE_CURSOR_INFO = undefined;
-//        if (GetConsoleCursorInfo(std.io.getStdOut().handle, &info) == std.os.windows.TRUE) {
-//            info.bVisible = if (visible) std.os.windows.TRUE else std.os.windows.FALSE;
-//            if (SetConsoleCursorInfo(std.io.getStdOut().handle, &info) == std.os.windows.TRUE) {
-//                return;
-//            }
-//        }
-//        return error.Unexpected;
-//    }
-//}
-//
-//var consoleScreenBufferInfo: std.os.windows.CONSOLE_SCREEN_BUFFER_INFO = undefined;
-//fn getConsoleScreenBufferInfo() !std.os.windows.CONSOLE_SCREEN_BUFFER_INFO {
-//    if (std.os.windows.kernel32.GetConsoleScreenBufferInfo(std.io.getStdOut().handle, &consoleScreenBufferInfo) == std.os.windows.TRUE) {
-//        return consoleScreenBufferInfo;
-//    }
-//    return error.Unexpected;
-//}
-//
