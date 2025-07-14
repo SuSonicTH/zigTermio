@@ -44,8 +44,9 @@ pub fn init() !Self {
 
 /// resets the terminal to the same state as before
 pub fn deinit(self: *Self) void {
+    self.exitAlternateBuffer() catch {};
+
     if (builtin.os.tag == .windows) {
-        self.exitAlternateBuffer() catch {};
         if (windows.kernel32.GetStdHandle(windows.STD_OUTPUT_HANDLE)) |stdoutHandle| {
             _ = SetConsoleMode(stdoutHandle, self.originalOutMode);
         }
@@ -227,9 +228,7 @@ pub inline fn drawBox(self: *Self, topLeft: Position, bottomRight: Position) !vo
     try self.cursorSet(oldPos);
 }
 
-/////////////////////////
-/// private functions
-/////////////////////////
+///////////////// private functions /////////////////
 
 fn instring(string: []const u8, char: u8) ?usize {
     for (0..string.len) |i| {
@@ -259,9 +258,7 @@ fn readTill(self: *Self, comptime start: u8, comptime end: u8) []const u8 {
     return readTillBuffer[1..pos];
 }
 
-/////////////////////////////
-/// Imports and Constants
-/////////////////////////////
+///////////////// Imports and Constants /////////////////
 
 const std = @import("std");
 const builtin = @import("builtin");
