@@ -1,9 +1,10 @@
 const std = @import("std");
-const Termio = @import("Termio.zig");
+const Termio = @import("termio.zig");
 
 pub fn main() !void {
     try Termio.init();
     defer Termio.deinit();
+
     try Termio.enterAlternateBuffer();
     const writer = std.io.getStdOut().writer();
 
