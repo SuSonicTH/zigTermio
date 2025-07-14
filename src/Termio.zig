@@ -1,6 +1,9 @@
+//! This module provides functions for ansi terminal control
+
+/// this represents a position on the screen
 pub const Position = struct {
-    x: u16,
-    y: u16,
+    x: u16 = 0,
+    y: u16 = 0,
 };
 
 pub const Size = Position;
@@ -13,6 +16,8 @@ originalOutMode: windows.DWORD = 0,
 originalInMode: windows.DWORD = 0,
 alternateBuffer: bool = false,
 
+/// initializes the Termio struct, has to be called before anything else
+/// you have to call deinit before program exist
 pub fn init() !Self {
     if (builtin.os.tag == .windows) {
         var self: Self = .{
@@ -37,6 +42,7 @@ pub fn init() !Self {
     }
 }
 
+/// resets the terminal to the same state as before
 pub fn deinit(self: *Self) void {
     if (builtin.os.tag == .windows) {
         self.exitAlternateBuffer() catch {};
@@ -53,28 +59,40 @@ pub fn deinit(self: *Self) void {
     }
 }
 
+/// convinence function to write bytes to the terminal
+/// works as normal write but doeas not return the bytes written
 pub inline fn write(self: *Self, bytes: []const u8) !void {
     _ = try self.out.write(bytes);
 }
 
+/// convinence function to print at the current cursor position
+/// just calls standard print
 pub inline fn print(self: Self, comptime format: []const u8, args: anytype) !void {
     try self.out.writer().print(format, args);
 }
 
+/// enters an alternate buffer and clears the screen
+/// this saves the original text that was displayed before which is restored with exitAlternateBuffer
+/// exitAlternateBuffer will be automatically called on deinit
 pub fn enterAlternateBuffer(self: *Self) !void {
     if (!self.alternateBuffer) {
-        try self.write(ENTER_ALTERNATE_BUFFER);
+        try self.write(CSI ++ "?1049h");
         self.alternateBuffer = true;
     }
 }
 
+/// this restores the original text that was displayed before enterAlternateBuffer
+/// exitAlternateBuffer will be automatically called on deinit
 pub fn exitAlternateBuffer(self: *Self) !void {
     if (self.alternateBuffer) {
-        try self.write(EXIT_ALTERNATE_BUFFER);
+        try self.write(CSI ++ "?1049l");
         self.alternateBuffer = false;
     }
 }
 
+///////////////// Cursor /////////////////
+
+/// get the current position of the cursor on the screen
 pub inline fn cursorGet(self: *Self) !Position {
     try self.write(CSI ++ "6n");
     const pos = self.readTill('[', 'R');
@@ -87,35 +105,101 @@ pub inline fn cursorGet(self: *Self) !Position {
     return error.CouldNotParsePosition;
 }
 
+/// sets the current position of the cursor on the screen
 pub inline fn cursorSet(self: *Self, pos: Position) !void {
     var buffer: [14]u8 = undefined;
     const output = try std.fmt.bufPrint(&buffer, CSI ++ "{d};{d}H", .{ pos.y, pos.x });
     try self.write(output);
 }
 
-pub inline fn CursorHome(self: *Self) !void {
-    try self.write(SET_CURSOR_HOME);
+pub inline fn cursorSetHorizontal(self: *Self, n: u16) !void {
+    var buffer: [14]u8 = undefined;
+    const output = try std.fmt.bufPrint(&buffer, CSI ++ "{d}G", .{n});
+    try self.write(output);
 }
 
-pub inline fn clearScreen(self: *Self, home: bool) !void {
-    try self.write(CLEAR_SCREEN);
-    if (home) try self.CursorHome();
+pub inline fn cursorSave(self: *Self) !void {
+    try self.write(CSI ++ "s");
 }
 
-pub inline fn getTerminalSize(self: *Self) !Size {
-    const oldPos = try self.cursorGet();
+pub inline fn cursorRestore(self: *Self) !void {
+    try self.write(CSI ++ "u");
+}
+pub inline fn cursorHome(self: *Self) !void {
+    try self.write(CSI ++ "1;1H");
+}
+
+pub inline fn cursorUp(self: *Self, n: u16) !void {
+    try self.print(CSI ++ "{d}A", .{n});
+}
+
+pub inline fn cursorDown(self: *Self, n: u16) !void {
+    try self.print(CSI ++ "{d}B", .{n});
+}
+
+pub inline fn cursorRight(self: *Self, n: u16) !void {
+    try self.print(CSI ++ "{d}C", .{n});
+}
+
+pub inline fn cursorLeft(self: *Self, n: u16) !void {
+    try self.print(CSI ++ "{d}D", .{n});
+}
+
+pub inline fn cursorNextLine(self: *Self, n: u16) !void {
+    try self.print(CSI ++ "{d}E", .{n});
+}
+
+pub inline fn cursorPreviousLine(self: *Self, n: u16) !void {
+    try self.print(CSI ++ "{d}F", .{n});
+}
+
+///////////////// Screen /////////////////
+
+pub inline fn screenClearDown(self: *Self) !void {
+    try self.write(CSI ++ "0J");
+}
+
+pub inline fn screenClearUp(self: *Self) !void {
+    try self.write(CSI ++ "1J");
+}
+
+pub inline fn screenClear(self: *Self) !void {
+    try self.write(CSI ++ "2J");
+}
+
+pub inline fn screenClearAndScrollBack(self: *Self) !void {
+    try self.write(CSI ++ "3J");
+}
+
+pub inline fn screenGetSize(self: *Self) !Size {
+    try self.cursorSave();
+    defer self.cursorRestore() catch unreachable;
+
     try self.write(CSI ++ "9999;9999H");
-    const pos = try self.cursorGet();
-
-    try self.cursorSet(oldPos);
-    return pos;
+    return try self.cursorGet();
 }
+
+pub inline fn screenClearLineRight(self: *Self) !void {
+    try self.write(CSI ++ "0K");
+}
+
+pub inline fn screenClearLineLeft(self: *Self) !void {
+    try self.write(CSI ++ "1K");
+}
+
+pub inline fn screenClearLine(self: *Self) !void {
+    try self.write(CSI ++ "2K");
+}
+
+///////////////// Input /////////////////
 
 pub inline fn getKey(self: *Self) !u8 {
     var key: [1]u8 = undefined;
     _ = try self.in.read(&key);
     return key[0];
 }
+
+///////////////// Misc /////////////////
 
 pub inline fn drawBox(self: *Self, topLeft: Position, bottomRight: Position) !void {
     const oldPos = try self.cursorGet();
@@ -160,8 +244,9 @@ var readTillBuffer: [128]u8 = undefined;
 fn readTill(self: *Self, comptime start: u8, comptime end: u8) []const u8 {
     var pos: u8 = 0;
     while ((self.in.reader().readByte() catch {
-        return readTillBuffer[0..pos];
+        return readTillBuffer[0..0];
     }) != start) {}
+
     while (pos < readTillBuffer.len) {
         readTillBuffer[pos] = self.in.reader().readByte() catch {
             return readTillBuffer[0..pos];
@@ -202,8 +287,3 @@ const INPUT_MODE = ENABLE_VIRTUAL_TERMINAL_INPUT | ENABLE_WINDOW_INPUT | ENABLE_
 
 const ESC: []const u8 = "\x1b";
 const CSI: []const u8 = ESC ++ "[";
-
-const ENTER_ALTERNATE_BUFFER: []const u8 = CSI ++ "?1049h";
-const EXIT_ALTERNATE_BUFFER: []const u8 = CSI ++ "?1049l";
-const CLEAR_SCREEN = CSI ++ "2J";
-const SET_CURSOR_HOME = CSI ++ "1;1H";
