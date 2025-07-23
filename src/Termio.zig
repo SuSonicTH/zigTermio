@@ -19,12 +19,12 @@ alternateBuffer: bool = false,
 /// initializes the Termio struct, has to be called before anything else
 /// you have to call deinit before program exist
 pub fn init() !Self {
-    if (builtin.os.tag == .windows) {
-        var self: Self = .{
-            .out = std.io.getStdOut(),
-            .in = std.io.getStdIn(),
-        };
+    var self: Self = .{
+        .out = std.io.getStdOut(),
+        .in = std.io.getStdIn(),
+    };
 
+    if (builtin.os.tag == .windows) {
         self.oldCodePage = GetConsoleOutputCP();
         if (self.oldCodePage != utf8CodePage) {
             _ = SetConsoleOutputCP(utf8CodePage);
@@ -37,9 +37,10 @@ pub fn init() !Self {
         const stdinHandle = windows.kernel32.GetStdHandle(windows.STD_INPUT_HANDLE) orelse return error.NoStandardHandleAttached;
         if (GetConsoleMode(stdinHandle, &self.originalInMode) == windows.FALSE) return error.Unexpected;
         if (SetConsoleMode(stdinHandle, INPUT_MODE) == windows.FALSE) return error.Unexpected;
-
-        return self;
+    } else  {
+        
     }
+    return self;
 }
 
 /// resets the terminal to the same state as before
