@@ -8,7 +8,8 @@ pub fn main() !void {
     try term.enterAlternateBuffer();
     const size = try term.screenGetSize();
     try term.drawBox(.{ .x = 1, .y = 1 }, size);
-    try term.cursorSet(.{ .x = 2, .y = 2 });
-    try term.print("size = {d}x{d}", .{ size.x, size.y });
-    _ = try term.getKey();
+
+    //try term.cursorSet(.{ .x = 2, .y = 2 });
+    //try term.print("size = {d}x{d}", .{ size.x, size.y });
+    //_ = try term.getKey();
 }
