@@ -261,6 +261,32 @@ pub inline fn drawBox(self: *Self, topLeft: Position, bottomRight: Position) !vo
     try self.cursorSet(oldPos);
 }
 
+pub inline fn drawRoundBox(self: *Self, topLeft: Position, bottomRight: Position) !void {
+    const oldPos = try self.cursorGet();
+
+    try self.cursorSet(topLeft);
+    try self.write("╭");
+    for (topLeft.x + 1..bottomRight.x) |_| {
+        try self.write("─");
+    }
+    try self.write("╮");
+
+    try self.cursorSet(.{ .x = topLeft.x, .y = bottomRight.y });
+    try self.write("╰");
+    for (topLeft.x + 1..bottomRight.x) |_| {
+        try self.write("─");
+    }
+    try self.write("╯");
+
+    for (topLeft.y + 1..bottomRight.y) |y| {
+        try self.cursorSet(.{ .x = topLeft.x, .y = @intCast(y) });
+        try self.write("│");
+        try self.cursorSet(.{ .x = bottomRight.x, .y = @intCast(y) });
+        try self.write("│");
+    }
+    try self.cursorSet(oldPos);
+}
+
 ///////////////// private functions /////////////////
 
 fn instring(string: []const u8, char: u8) ?usize {
