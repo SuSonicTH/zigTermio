@@ -11,10 +11,13 @@ pub const Size = Position;
 const Self = @This();
 in: std.fs.File = undefined,
 out: std.fs.File = undefined,
+alternateBuffer: bool = false,
+
+//windows
 oldCodePage: windows.UINT = 0,
 originalOutMode: windows.DWORD = 0,
 originalInMode: windows.DWORD = 0,
-alternateBuffer: bool = false,
+//posix
 origTermios: std.posix.termios = undefined,
 
 /// initializes the Termio struct, has to be called before anything else
@@ -65,7 +68,6 @@ pub fn init() !Self {
         termios.cc[@intFromEnum(std.posix.V.MIN)] = 1;
         termios.cc[@intFromEnum(std.posix.V.TIME)] = 0;
 
-        // apply changes
         try std.posix.tcsetattr(self.in.handle, .FLUSH, termios);
     }
     return self;
