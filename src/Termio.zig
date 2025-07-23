@@ -15,6 +15,7 @@ oldCodePage: windows.UINT = 0,
 originalOutMode: windows.DWORD = 0,
 originalInMode: windows.DWORD = 0,
 alternateBuffer: bool = false,
+origTermios: std.posix.termios = undefined,
 
 /// initializes the Termio struct, has to be called before anything else
 /// you have to call deinit before program exist
@@ -37,8 +38,35 @@ pub fn init() !Self {
         const stdinHandle = windows.kernel32.GetStdHandle(windows.STD_INPUT_HANDLE) orelse return error.NoStandardHandleAttached;
         if (GetConsoleMode(stdinHandle, &self.originalInMode) == windows.FALSE) return error.Unexpected;
         if (SetConsoleMode(stdinHandle, INPUT_MODE) == windows.FALSE) return error.Unexpected;
-    } else  {
-        
+    } else {
+        self.origTermios = try std.posix.tcgetattr(self.in.handle);
+
+        var termios = self.origTermios;
+
+        termios.iflag.IGNBRK = false;
+        termios.iflag.BRKINT = false;
+        termios.iflag.PARMRK = false;
+        termios.iflag.ISTRIP = false;
+        termios.iflag.INLCR = false;
+        termios.iflag.ICRNL = false;
+        termios.iflag.IXON = false;
+
+        termios.oflag.OPOST = false;
+
+        termios.lflag.ECHO = false;
+        termios.lflag.ECHONL = false;
+        termios.lflag.ICANON = false;
+        termios.lflag.ISIG = false;
+        termios.lflag.IEXTEN = false;
+
+        termios.cflag.CSIZE = .CS8;
+        termios.cflag.PARENB = false;
+
+        termios.cc[@intFromEnum(std.posix.V.MIN)] = 1;
+        termios.cc[@intFromEnum(std.posix.V.TIME)] = 0;
+
+        // apply changes
+        try std.posix.tcsetattr(self.in.handle, .FLUSH, termios);
     }
     return self;
 }
@@ -58,6 +86,8 @@ pub fn deinit(self: *Self) void {
         if (self.oldCodePage > 0 and self.oldCodePage != utf8CodePage) {
             _ = SetConsoleOutputCP(self.oldCodePage);
         }
+    } else {
+        std.posix.tcsetattr(self.in.handle, .FLUSH, self.origTermios) catch unreachable;
     }
 }
 
