@@ -37,6 +37,8 @@ pub fn init() !Self {
         const stdinHandle = windows.kernel32.GetStdHandle(windows.STD_INPUT_HANDLE) orelse return error.NoStandardHandleAttached;
         if (GetConsoleMode(stdinHandle, &self.originalInMode) == windows.FALSE) return error.Unexpected;
         if (SetConsoleMode(stdinHandle, INPUT_MODE) == windows.FALSE) return error.Unexpected;
+    } else  {
+        
     }
     return self;
 }
